@@ -10,6 +10,14 @@
 #       For details, review the import statements in zid_project2_main.py
 
 # <COMPLETE THIS PART>
+import sys
+import numpy as np
+import pandas as pd
+import config as cfg
+import zid_project2_etl as etl
+import zid_project2_characteristics as cha
+import zid_project2_portfolio as pf
+import util
 
 
 # ----------------------------------------------------------------------------------------
@@ -147,6 +155,23 @@ def vol_cal(ret, cha_name, ret_freq_use: list):
     """
 
     # <COMPLETE THIS PART>
+    # Extract daily return series
+    daily_returns = ret['Daily']
+
+    # Convert date index to PeriodIndex
+    daily_returns.index = pd.to_datetime(daily_returns.index)
+    daily_returns.index = daily_returns.index.to_period('M')
+
+    # Calculate total volatility for each stock in each month
+    monthly_volatility = daily_returns.groupby(level=0).std()
+
+    # Set volatility value to None if fewer than 18 return entries in a month
+    monthly_volatility[monthly_volatility.count(axis=1) < 18] = None
+
+    # Rename columns
+    monthly_volatility.columns = [col + '_' + cha_name for col in monthly_volatility.columns]
+
+    return monthly_volatility
 
 
 # ----------------------------------------------------------------------------
@@ -220,6 +245,19 @@ def merge_tables(ret, df_cha, cha_name):
      - Read shift() documentations to understand how to shift the values of a DataFrame along a specified axis
     """
     # <COMPLETE THIS PART>
+    # Extract monthly returns from ret dictionary
+    monthly_returns = ret['Monthly']
+
+    # Merge with df_cha on Year_Month
+    merged_df = pd.merge(monthly_returns, df_cha, left_index=True, right_index=True, how='left')
+
+    # Shift characteristics columns 1 month forward
+    merged_df[[col + '_shifted' for col in df_cha.columns]] = merged_df[[col for col in df_cha.columns]].shift(1)
+
+    # Rename columns
+    merged_df.columns = [col if '_shifted' not in col else col.replace('_shifted', '') for col in merged_df.columns]
+
+    return merged_df
 
 
 # ------------------------------------------------------------------------------------
@@ -270,6 +308,16 @@ def cha_main(ret, cha_name, ret_freq_use: list):
         in the module with appropriate logic to handle the inputs and outputs as described.
     """
     # <COMPLETE THIS PART>
+    # Step 1: Sanity check
+    vol_input_sanity_check(ret, cha_name, ret_freq_use)
+
+    # Step 2: Calculate total volatility
+    df_cha = vol_cal(ret, cha_name, ret_freq_use)
+
+    # Step 3: Merge tables
+    df_merged = merge_tables(ret, df_cha, cha_name)
+
+    return df_merged
 
 
 def _test_ret_dict_gen():
@@ -353,7 +401,10 @@ def _test_vol_cal(ret, cha_name,  ret_freq_use):
 
     df_cha = vol_cal(ret, cha_name, ret_freq_use)
     msg = "This means `df_cha = vol_cal(ret, cha_name, ret_freq_use)`, print out df_cha:"
+    print(msg)
+    print(df_cha)
     util.test_print(df_cha, msg)
+
 
 
 def _test_merge_tables(ret, cha_name, ret_freq_use):
